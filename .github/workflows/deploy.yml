@@ -1,0 +1,61 @@
+name: Build and Deploy AMIs
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::736548753645:role/GithubRole
+          aws-region: us-east-1
+      - uses: actions/checkout@v3
+      - name: Packer Init
+        id: packer_init
+        run: packer init .
+      - id: packer_build
+        name: Packer Build
+        run: packer build .
+
+  cleanup_resources:
+    runs-on: ubuntu-latest
+    needs: build_and_deploy
+    if: always()  # Run this job always, regardless of the status of previous jobs
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          role-to-assume: arn:aws:iam::736548753645:role/GithubRole
+          aws-region: us-east-1
+      - name: Cleanup Resources
+        run: |
+          echo "will terminate the resources here..."
+          instance_ids=$(aws ec2 describe-instances --region  eu-west-1 --filters "Name=tag:packer-name,Values=elastic-agent-ami-builder" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text)
+          for instance_id in $instance_ids; do
+            echo "Processing instance ID: $instance_id"
+            values=$(aws ec2 describe-tags --region eu-west-1 --filters "Name=resource-id,Values=$instance_id" --query "Tags[?Key=='instance-id' || Key=='security-group' || Key=='key-pair'].Value" --output text)
+            if [ -n "$values" ]; then
+              echo "Values are not empty: $values"
+              aws ec2 terminate-instances --instance-ids "$instance_id" --region eu-west-1
+              aws ec2 wait instance-terminated --instance-ids "$instance_id" --region eu-west-1
+              key_pair_name=$(echo "$values" | awk '{print $2}')
+              aws ec2 delete-key-pair --key-name $key_pair_name --region eu-west-1
+              sg_name=$(echo "$values" | awk '{print $3}')
+              security_group_id=$(aws ec2 describe-security-groups --region eu-west-1 --filters "Name=group-name,Values=$sg_name" --query "SecurityGroups[0].GroupId" --output text)
+              aws ec2 delete-security-group --group-id "$security_group_id" --region eu-west-1
+              echo "terminated"
+            else
+              echo "Values are empty or not found."
+            fi
+          done
+          echo "Script completed."
+  
+        
