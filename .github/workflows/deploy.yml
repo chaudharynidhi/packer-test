@@ -2,7 +2,7 @@ name: Build and Deploy AMIs
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
 
 permissions:
   id-token: write
