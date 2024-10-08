@@ -15,7 +15,8 @@ jobs:
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          role-to-assume: arn:aws:iam::736548753645:role/GithubRole
+          aws-access-key-id: AKIA2W7N2CDWRFAL2EFF
+          aws-secret-access-key: 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
           aws-region: us-east-1
       - uses: actions/checkout@v3
       - name: Packer Init
